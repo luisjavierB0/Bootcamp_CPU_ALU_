@@ -2,49 +2,55 @@
 
 ## Overview
 
-This project implements a compact 8-bit CPU in Verilog for Tiny Tapeout.
+This project implements a compact 8-bit CPU in Verilog.
 
-The processor does not depend on a fixed hardcoded program. Instead, a short instruction sequence is loaded through SPI into internal program memory, and then executed autonomously by the CPU.
+The processor does not execute from a fixed hardcoded ROM. Instead, a short instruction sequence is loaded from an external controller through SPI into internal program memory, and then the CPU executes that program autonomously.
 
-The final implementation targets a compact architecture that fits a Tiny Tapeout 1x1 tile while still supporting programmable behavior.
+The architecture was designed to keep the system programmable while remaining compact enough for a Tiny Tapeout 1x1 implementation.
 
 ---
 
 ## Main idea
 
-The system works in two phases:
+The system operates in two phases:
 
 ### 1. Program loading phase
-When `RUN = 0`, an external controller sends instruction frames through SPI.  
-Those frames are decoded by the on-chip SPI loader and stored into internal program memory.
+When `RUN = 0`, an external controller sends SPI frames that contain:
+
+- instruction address
+- 16-bit instruction word
+
+Those instructions are written into internal program memory.
 
 ### 2. Execution phase
-When `RUN = 1`, the CPU starts executing from address `0` and runs autonomously from the stored instruction memory.
+When `RUN = 1`, the CPU starts from address `0` and executes autonomously from the internal instruction memory.
 
-This approach preserves programmability without requiring a permanently fixed program in silicon.
+This means the chip itself does **not** read files directly.  
+A host system or controller stores the program externally, converts it into SPI frames, and sends those frames into the ASIC.
 
 ---
 
-## Architecture
+## RTL architecture
 
-The design is divided into the following RTL blocks:
+The project is organized into the following RTL blocks:
 
 ### `alu8.v`
-8-bit ALU used by the CPU for arithmetic and logic operations.
+8-bit ALU used for arithmetic and logic operations.
 
 ### `tiny8_cpu.v`
 CPU core that handles:
+
 - instruction sequencing
 - decode
-- branching
 - ALU control
-- output register updates
-- HALT state management
+- branching
+- output generation
+- halt control
 
 ### `tiny8_prgmem.v`
 Internal instruction memory.
 
-The final implementation uses **10 valid instruction slots**.
+The implemented design uses **10 valid instruction slots**.
 
 Valid instruction addresses are:
 
@@ -59,35 +65,28 @@ Valid instruction addresses are:
 - `8`
 - `9`
 
-Addresses outside this valid range are treated as invalid.
-
 ### `tiny8_spi_loader.v`
-SPI loader that receives 24-bit frames and writes instructions into internal program memory.
+SPI loader that receives 24-bit frames and writes instructions into internal memory.
 
 ### `tt_um_tiny8_risclike.v`
-Tiny Tapeout top-level wrapper.  
-This module connects:
-- SPI input signals
-- program memory
-- CPU
-- output/status signals
-- Tiny Tapeout external pins
+Top-level wrapper for integration with the external pin interface.
 
 ---
 
-## Program memory model
+## Internal program memory model
 
-The internal memory stores **10 instruction words**.
+The internal program memory stores:
 
-Each instruction word is **16 bits** wide.
+- **10 instruction words**
+- each instruction is **16 bits**
 
 ### Valid addresses
-Instruction slots are valid only for addresses:
+Valid program addresses are:
 
 - `0` to `9`
 
 ### Invalid addresses
-If the CPU attempts to read outside the valid range, the program memory returns:
+If the CPU reads outside the valid range, the memory returns:
 
 - `16'hD000`
 
@@ -95,21 +94,22 @@ which corresponds to:
 
 - `HALT`
 
-This prevents undefined execution if a bad address is reached.
+This prevents undefined execution if an invalid program address is reached.
 
 ---
 
 ## CPU execution model
 
-The CPU includes:
+The CPU contains:
 
 - one accumulator register: `ACC`
 - one auxiliary register: `R1`
-- one visible output port: `port_out`
+- one visible output register: `port_out`
 - one zero flag: `Z`
 
 ### Reset behavior
 After reset:
+
 - `ACC = 0`
 - `R1 = 0`
 - `port_out = 0`
@@ -117,53 +117,32 @@ After reset:
 - `halted = 0`
 
 ### Sequential execution
-The CPU fetches from the current program counter and executes instructions one by one.
+The CPU fetches one instruction at a time from the current program counter and executes it.
 
 ### Program counter wrap
 Sequential execution wraps from address `9` back to address `0`.
 
 ### Branch behavior
-Branch targets are taken from the low address bits of the instruction.
+Branch instructions use the low address bits of the instruction.
 
-If a branch target is outside the valid address range, execution is redirected safely to address `0`.
+If a branch target is outside the valid range, execution is redirected to address `0`.
 
 ### Halt behavior
 When `HALT` is executed:
+
 - `halted = 1`
-- the CPU remains in halt state
-- execution only restarts after reset or after deasserting `RUN`
+- execution stops
+- the CPU remains halted until reset or until `RUN` is deasserted and asserted again according to the external operating flow
 
 ---
 
 ## Instruction set
 
-The instruction opcode is stored in:
+The opcode is stored in:
 
 - `instr[15:12]`
 
-The current ISA includes:
-
-### Data and register operations
-- `NOP`
-- `LDI_ACC`
-- `LDI_R1`
-- `MOV_ACC_R1`
-
-### Arithmetic and logic operations
-- `ADD`
-- `SUB`
-- `AND`
-- `OR`
-- `XOR`
-- `CMP`
-
-### Output and control operations
-- `OUT`
-- `OUT_R1`
-- `JMP`
-- `BZ`
-- `BNZ`
-- `HALT`
+The implemented ISA includes the following instructions.
 
 ---
 
@@ -171,12 +150,12 @@ The current ISA includes:
 
 ### `NOP`
 - Opcode: `0x0`
-- Format: `0x0000`
+- Encoding: `0x0000`
 - Effect: no operation
 
 ### `LDI_ACC`
 - Opcode: `0x1`
-- Format: `0x1xxx`
+- Encoding: `0x1xxx`
 - Effect: `ACC <- imm8`
 
 Example:
@@ -184,7 +163,7 @@ Example:
 
 ### `LDI_R1`
 - Opcode: `0x2`
-- Format: `0x2xxx`
+- Encoding: `0x2xxx`
 - Effect: `R1 <- imm8`
 
 Example:
@@ -192,42 +171,42 @@ Example:
 
 ### `ADD`
 - Opcode: `0x3`
-- Format: `0x3000`
+- Encoding: `0x3000`
 - Effect: `ACC <- ACC + R1`
 
 ### `SUB`
 - Opcode: `0x4`
-- Format: `0x4000`
+- Encoding: `0x4000`
 - Effect: `ACC <- ACC - R1`
 
 ### `AND`
 - Opcode: `0x5`
-- Format: `0x5000`
+- Encoding: `0x5000`
 - Effect: `ACC <- ACC & R1`
 
 ### `OR`
 - Opcode: `0x6`
-- Format: `0x6000`
+- Encoding: `0x6000`
 - Effect: `ACC <- ACC | R1`
 
 ### `XOR`
 - Opcode: `0x7`
-- Format: `0x7000`
+- Encoding: `0x7000`
 - Effect: `ACC <- ACC ^ R1`
 
 ### `CMP`
 - Opcode: `0x8`
-- Format: `0x8000`
-- Effect: update comparison state through ALU subtraction path and zero flag result
+- Encoding: `0x8000`
+- Effect: update the comparison state through the subtraction path and zero flag
 
 ### `OUT`
 - Opcode: `0x9`
-- Format: `0x9000`
+- Encoding: `0x9000`
 - Effect: `port_out <- ACC`
 
 ### `JMP`
 - Opcode: `0xA`
-- Format: `0xA00a`
+- Encoding: `0xA00a`
 - Effect: unconditional jump to address `a`
 
 Example:
@@ -235,44 +214,44 @@ Example:
 
 ### `BZ`
 - Opcode: `0xB`
-- Format: `0xB00a`
+- Encoding: `0xB00a`
 - Effect: branch to address `a` if `Z = 1`
 
 ### `BNZ`
 - Opcode: `0xC`
-- Format: `0xC00a`
+- Encoding: `0xC00a`
 - Effect: branch to address `a` if `Z = 0`
 
 ### `HALT`
 - Opcode: `0xD`
-- Format: `0xD000`
+- Encoding: `0xD000`
 - Effect: stop execution and assert `halted`
 
 ### `MOV_ACC_R1`
 - Opcode: `0xE`
-- Format: `0xE000`
+- Encoding: `0xE000`
 - Effect: `ACC <- R1`
 
 ### `OUT_R1`
 - Opcode: `0xF`
-- Format: `0xF000`
+- Encoding: `0xF000`
 - Effect: `port_out <- R1`
 
 ---
 
 ## SPI loading protocol
 
-Instructions are loaded through **24-bit SPI frames**.
+Instructions are written through **24-bit SPI frames**.
 
 ### Frame format
 - bits `[23:16]` = address byte
 - bits `[15:0]`  = instruction word
 
-### Effective address use
-Only valid internal instruction addresses are meaningful in the final design.
+### Effective use
+Only the valid internal program addresses are meaningful in the final implementation.
 
 ### Write condition
-Program writes are allowed only when:
+Program memory writes are enabled only when:
 
 - `RUN = 0`
 
@@ -282,40 +261,44 @@ If `RUN = 1`, the CPU is in execution mode and memory writes are blocked.
 
 ## Operating sequence
 
-## 1. Reset
+### Step 1: Reset the system
 Apply reset to initialize:
+
 - CPU state
 - memory contents
-- output port
-- flags and status
+- output register
+- status signals
 
-## 2. Load program
+### Step 2: Keep execution disabled
 Set:
+
 - `RUN = 0`
 
-Then send the desired SPI frames, one instruction per frame.
+### Step 3: Load the program
+Send the SPI frames, one frame per instruction.
 
-## 3. Confirm load status
+### Step 4: Confirm loading
 Observe:
+
 - `PROGRAM_LOADED`
 
-to confirm that at least one program word has been written.
-
-## 4. Start execution
+### Step 5: Start execution
 Set:
+
 - `RUN = 1`
 
 The CPU begins execution from address `0`.
 
-## 5. Observe execution
+### Step 6: Observe the result
 Monitor:
-- `uo[7:0]` for output values
-- `HALTED` to detect end of program
-- `RUN_ECHO` to confirm run state
+
+- `uo[7:0]`
+- `HALTED`
+- `RUN_ECHO`
 
 ---
 
-## Tiny Tapeout pin mapping
+## Pin mapping
 
 ### Dedicated inputs
 - `ui[0]` = `RUN`
@@ -337,7 +320,7 @@ Monitor:
 
 ## Example program
 
-A simple example program is:
+Example program:
 
 | Address | Instruction | Meaning |
 |--------:|-------------|---------|
@@ -358,7 +341,7 @@ A simple example program is:
 
 ## Example SPI frames
 
-For the example program above, the frames would be:
+For the example above, the SPI frames are:
 
 | Address | Instruction | 24-bit frame |
 |--------:|-------------|--------------|
@@ -370,102 +353,166 @@ For the example program above, the frames would be:
 
 ---
 
-## Physical use on the Tiny Tapeout demo board
+## Physical use in a real setup
 
-## General concept
-In physical use, the design is intended to be driven by the Tiny Tapeout demo board controller.
+## What is loaded physically
+The chip does **not** read a file directly.
 
-The CPU does **not** fetch instructions continuously from external memory during execution.  
-Instead:
+In a real setup, an external controller stores the program file, converts each line into a 24-bit SPI frame, and sends those frames to the ASIC.
 
-1. the external controller sends instruction frames through SPI,
-2. the ASIC stores them into internal memory,
-3. the ASIC executes autonomously from internal memory.
+That means the practical flow is:
 
-## Practical board-level use
-A typical physical demonstration would follow this sequence:
+1. create a file containing address/instruction pairs
+2. convert them to 24-bit frames
+3. send them through SPI while `RUN = 0`
+4. set `RUN = 1` to start execution
 
-### Step 1: Power and select the design
-Power the Tiny Tapeout demo board and select the target project.
+## Typical physical controller
+A practical controller may be:
 
-### Step 2: Provide clock
-Use the board clock source for the ASIC.
+- a microcontroller
+- an FPGA
+- a USB-to-GPIO host
+- a demo board controller
 
-### Step 3: Hold execution disabled
-Keep:
+The controller acts as:
 
-- `RUN = 0`
-
-so that the CPU remains in program load mode.
-
-### Step 4: Send SPI program frames
-Drive these pins:
-
-- `uio[0]` → `SPI_SCK`
-- `uio[1]` → `SPI_CS_N`
-- `uio[2]` → `SPI_MOSI`
-
-One 24-bit frame is sent for each instruction.
-
-### Step 5: Wait for load confirmation
-Observe:
-
-- `uio[3]` → `PROGRAM_LOADED`
-
-### Step 6: Start program execution
-Set:
-
-- `RUN = 1`
-
-The CPU starts from address `0`.
-
-### Step 7: Observe result and end of execution
-Monitor:
-
-- `uo[7:0]` → program result/output
-- `uio[4]` → `HALTED`
-- `uio[5]` → `RUN_ECHO`
-
-## Practical interpretation of demo board memory
-If the demo board controller stores the intended instruction frames on its side, that board-side storage is used only as a **source for loading**.  
-The actual execution takes place from the ASIC internal instruction memory.
-
-So, physically, the board acts as:
-- instruction source
 - SPI master
-- clock/control provider
+- clock/control source
+- external program source
 
-while the ASIC acts as:
-- instruction memory target
+The ASIC acts as:
+
+- SPI program target
+- internal program memory
 - autonomous execution engine
 
 ---
 
-## Test and validation concept
+## Human-visible operation
 
-The project test flow validates:
+## Important practical detail
+If the CPU is clocked too fast, a human will not be able to observe the intermediate behavior directly.
+
+That means the design is easiest to demonstrate in one of these ways:
+
+### 1. Slow clock mode
+Use a slow external clock so that the output can be seen by eye.
+
+For example, the controller may provide:
+
+- one instruction every visible fraction of a second
+- a very slow continuous clock
+- or a manual step-style clock
+
+### 2. Step-by-step demonstration
+Advance the clock manually or under software control so the observer can see:
+
+- when `PROGRAM_LOADED` goes high
+- when `RUN` is active
+- when `HALTED` goes high
+- what value appears on `uo[7:0]`
+
+### 3. Final-result-only demonstration
+Run the CPU at normal speed, then simply display the final output and halt status.
+
+---
+
+## Practical interpretation of outputs
+
+### `uo[7:0]`
+This is the visible CPU output port.
+
+In a real setup, it can be connected to:
+
+- LEDs
+- a logic analyzer
+- a microcontroller input bank
+- a display interface outside the ASIC
+
+### `uio[3] = PROGRAM_LOADED`
+Useful to verify that at least one instruction write has been accepted.
+
+### `uio[4] = HALTED`
+Useful to know when the program finished.
+
+### `uio[5] = RUN_ECHO`
+Useful to confirm the current execution mode.
+
+---
+
+## Real-world loading example
+
+A realistic usage scenario is:
+
+1. Keep `RUN = 0`
+2. Send the frames:
+   - `0x002033`
+   - `0x01E000`
+   - `0x029000`
+   - `0x03F000`
+   - `0x04D000`
+3. Wait for `PROGRAM_LOADED = 1`
+4. Apply a slow visible clock or a step clock
+5. Set `RUN = 1`
+6. Observe:
+   - `uo[7:0] = 0x33`
+   - `HALTED = 1` at the end
+
+---
+
+## What this architecture is optimized for
+
+The architecture is optimized for:
+
+- compact programmable behavior
+- external program loading
+- internal autonomous execution
+- simple physical interfacing
+- easy demonstration of final outputs and execution status
+
+It is **not** optimized for:
+
+- long programs
+- large internal memories
+- direct file parsing on-chip
+- human-visible execution at high clock frequency without external assistance
+
+For human-friendly demos, the external controller should provide either:
+
+- a slow clock
+- a step clock
+- or a final-result display strategy
+
+---
+
+## Validation intent
+
+The project test flow is meant to validate:
 
 - SPI instruction loading
 - correct memory writes
 - autonomous execution
 - output behavior
-- halt detection
+- halt signaling
 - gate-level compatibility
 
-The testbench structure reflects the real usage model of the design:
+The validation strategy matches the real usage model:
+
 - load through SPI
 - execute internally
-- verify output and status
+- verify visible output and status signals
 
 ---
 
 ## Project intent
 
-This project extends a simple ALU-style exercise into a compact programmable processing system.
+This design extends a simple ALU-style exercise into a compact programmable processing system.
 
-Instead of applying operations manually every time, the ALU is controlled by a small CPU that:
+Instead of triggering operations manually every time, the ALU is controlled by a small CPU that:
+
 - receives a short program
 - stores it internally
 - executes it autonomously
 
-This makes the project more representative of a real programmable digital block while still remaining compact enough for Tiny Tapeout.
+This makes the project closer to a real programmable digital block while still remaining compact enough for Tiny Tapeout.
