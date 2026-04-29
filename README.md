@@ -1,59 +1,105 @@
-# Bootcamp_CPU_ALU_
+# Tiny8 CPU with SPI Program Load and Internal Execution
 
-Tiny Tapeout project implementing a compact 8-bit CPU with SPI program loading and internal execution.
+This project implements a compact 8-bit CPU in Verilog for Tiny Tapeout.
 
-## Final stable version
+## Main idea
+The processor does not rely on a fixed hardcoded program.  
+Instead, a short instruction sequence is loaded into internal program memory through SPI, and then executed autonomously by the CPU.
 
-This repository is aligned to the stable implementation with:
+This approach preserves programmability while keeping the architecture small enough for a Tiny Tapeout 1x1 implementation.
 
-- 8-bit CPU core
-- internal program memory with 10 instruction slots
-- SPI loader for writing instructions into memory
-- enriched ISA including:
-  - `MOV_ACC_R1`
-  - `OUT_R1`
+## Main features
+- 8-bit accumulator-based CPU
+- SPI program loading into internal instruction memory
+- autonomous execution after loading
+- 10 instruction slots in internal program memory
+- compact enriched ISA
 
-## Main RTL files
+## Supported instructions
+### Data and register operations
+- `LDI_ACC`
+- `LDI_R1`
+- `MOV_ACC_R1`
 
-Located in `src/`:
+### Arithmetic and logic operations
+- `ADD`
+- `SUB`
+- `AND`
+- `OR`
+- `XOR`
+- `CMP`
 
-- `alu8.v`
-- `tiny8_cpu.v`
-- `tiny8_prgmem.v`
-- `tiny8_spi_loader.v`
-- `tt_um_tiny8_risclike.v`
+### Output and control operations
+- `OUT`
+- `OUT_R1`
+- `JMP`
+- `BZ`
+- `BNZ`
+- `HALT`
+- `NOP`
 
-## Testing
+## Architecture
+The design is organized into the following RTL blocks:
 
-Located in `test/`:
+- `alu8.v`  
+  8-bit ALU for arithmetic and logic operations
 
-- `Makefile`
-- `tb.v`
-- `test.py`
+- `tiny8_cpu.v`  
+  CPU core, instruction decode, control flow, and output generation
 
-The testbench loads a short program through SPI and then executes it, validating:
+- `tiny8_prgmem.v`  
+  internal instruction memory
 
-- program loading
-- execution
-- output behavior
-- HALT signaling
+- `tiny8_spi_loader.v`  
+  SPI loader used to write instructions into program memory
 
-## IO summary
+- `tt_um_tiny8_risclike.v`  
+  Tiny Tapeout top-level wrapper
 
-### Inputs
-- `ui[0]` = `RUN`
+## Program loading model
+The SPI loader receives 24-bit frames:
 
-### Outputs
-- `uo[7:0]` = CPU output port
+- upper byte: address byte
+- lower 16 bits: instruction word
 
-### UIO usage
-- `uio[0]` = `SPI_SCK input`
-- `uio[1]` = `SPI_CS_N input`
-- `uio[2]` = `SPI_MOSI input`
-- `uio[3]` = `PROGRAM_LOADED output`
-- `uio[4]` = `HALTED output`
-- `uio[5]` = `RUN_ECHO output`
+Only the valid internal instruction addresses are used by the final design.
 
-## Notes
+When `RUN=0`, instructions can be loaded into memory.  
+When `RUN=1`, the CPU starts executing from address `0`.
 
-This repository intentionally keeps the final stable configuration rather than the more aggressive memory variants that exceeded practical placement limits in the 1x1 tile.
+## Current I/O usage
+### Dedicated inputs
+- `ui[0]`: `RUN`
+
+### Main outputs
+- `uo[7:0]`: CPU output port
+
+### Bidirectional bank
+- `uio[0]`: `SPI_SCK` input
+- `uio[1]`: `SPI_CS_N` input
+- `uio[2]`: `SPI_MOSI` input
+- `uio[3]`: `PROGRAM_LOADED` output
+- `uio[4]`: `HALTED` output
+- `uio[5]`: `RUN_ECHO` output
+
+## Validation status
+- RTL simulation: OK
+- SPI program load testbench: OK
+- cocotb-based execution test: OK
+- gate-level test: OK
+- LibreLane/OpenROAD hardening: validated for the selected architecture and memory depth
+
+## Example behavior
+A program can be loaded through SPI, stored in internal memory, and then executed to produce visible output on `uo[7:0]`.
+
+A simple example sequence is:
+
+- load immediate into `R1`
+- move `R1` into `ACC`
+- write `ACC` to output
+- write `R1` to output
+- halt execution
+
+## Note
+This project extends the original ALU challenge into a small programmable processor.  
+The ALU operations are not triggered through a direct manual interface; instead, they are executed under CPU control from an instruction sequence loaded through SPI.
