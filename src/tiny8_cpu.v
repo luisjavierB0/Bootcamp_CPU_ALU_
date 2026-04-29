@@ -1,5 +1,3 @@
-`timescale 1ns/1ps
-
 module tiny8_cpu (
     input  wire        clk,
     input  wire        rst_n,
@@ -31,16 +29,17 @@ module tiny8_cpu (
     localparam OP_BNZ     = 4'hC;
     localparam OP_HALT    = 4'hD;
 
-    reg [1:0]  state;
-    reg [4:0]  pc;
+    reg [1:0] state;
+    reg [4:0] pc;
+
+    /* verilator lint_off UNUSEDSIGNAL */
     reg [15:0] ir;
+    /* verilator lint_on UNUSEDSIGNAL */
 
     reg [7:0] acc;
     reg [7:0] r1;
 
     reg z;
-    reg n;
-    reg c;
 
     wire [3:0] opcode = ir[15:12];
     wire [7:0] imm8   = ir[7:0];
@@ -81,8 +80,6 @@ module tiny8_cpu (
             r1       <= 8'h00;
             port_out <= 8'h00;
             z        <= 1'b0;
-            n        <= 1'b0;
-            c        <= 1'b0;
             halted   <= 1'b0;
         end else if (!run) begin
             state  <= ST_FETCH;
@@ -105,8 +102,6 @@ module tiny8_cpu (
                         OP_LDI_ACC: begin
                             acc   <= imm8;
                             z     <= (imm8 == 8'h00);
-                            n     <= imm8[7];
-                            c     <= 1'b0;
                             pc    <= pc + 5'd1;
                             state <= ST_FETCH;
                         end
@@ -120,16 +115,12 @@ module tiny8_cpu (
                         OP_ADD, OP_SUB, OP_AND, OP_OR, OP_XOR: begin
                             acc   <= alu_y;
                             z     <= (alu_y == 8'h00);
-                            n     <= alu_y[7];
-                            c     <= alu_c;
                             pc    <= pc + 5'd1;
                             state <= ST_FETCH;
                         end
 
                         OP_CMP: begin
                             z     <= (alu_y == 8'h00);
-                            n     <= alu_y[7];
-                            c     <= alu_c;
                             pc    <= pc + 5'd1;
                             state <= ST_FETCH;
                         end
