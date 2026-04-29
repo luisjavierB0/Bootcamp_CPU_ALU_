@@ -5,7 +5,7 @@ module tiny8_spi_loader (
     input  wire        spi_cs_n,
     input  wire        spi_mosi,
     output reg         wr_en,
-    output reg  [2:0]  wr_addr,
+    output reg  [3:0]  wr_addr,
     output reg  [15:0] wr_data,
     output reg         loaded_pulse
 );
@@ -37,7 +37,7 @@ module tiny8_spi_loader (
             shift_reg    <= 24'h000000;
             bit_count    <= 5'd0;
             wr_en        <= 1'b0;
-            wr_addr      <= 3'd0;
+            wr_addr      <= 4'd0;
             wr_data      <= 16'h0000;
             loaded_pulse <= 1'b0;
         end else begin
@@ -57,8 +57,8 @@ module tiny8_spi_loader (
 
                 if (bit_count == 5'd23) begin
                     // Frame: [23:16] addr byte, [15:0] instruction
-                    // Solo usamos 3 bits de direccion: max 8 instrucciones
-                    wr_addr      <= next_shift[18:16];
+                    // Usamos 4 bits de direccion: max 16 instrucciones
+                    wr_addr      <= next_shift[19:16];
                     wr_data      <= next_shift[15:0];
                     wr_en        <= 1'b1;
                     loaded_pulse <= 1'b1;
