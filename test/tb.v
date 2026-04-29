@@ -1,6 +1,5 @@
 `default_nettype none
 
-
 module tb ();
 
   initial begin
@@ -39,3 +38,5 @@ module tb ();
   );
 
 endmodule
+
+`default_nettype wire
