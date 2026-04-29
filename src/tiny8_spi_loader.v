@@ -1,5 +1,3 @@
-`timescale 1ns/1ps
-
 module tiny8_spi_loader (
     input  wire        clk,
     input  wire        rst_n,
@@ -17,7 +15,10 @@ module tiny8_spi_loader (
     reg [1:0] mosi_ff;
     reg       sck_prev;
 
+    /* verilator lint_off UNUSEDSIGNAL */
     reg [23:0] shift_reg;
+    /* verilator lint_on UNUSEDSIGNAL */
+
     reg [4:0]  bit_count;
 
     wire sck_sync  = sck_ff[1];
