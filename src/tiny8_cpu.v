@@ -48,8 +48,8 @@ module tiny8_cpu (
 
     assign instr_addr = pc;
 
-    wire [3:0] pc_next_seq = (pc == 4'd11) ? 4'd0 : (pc + 4'd1);
-    wire       addr_valid  = (addr4 < 4'd12);
+    wire [3:0] pc_next_seq = (pc == 4'd9) ? 4'd0 : (pc + 4'd1);
+    wire       addr_valid  = (addr4 < 4'd10);
 
     reg  [2:0] alu_op;
     wire [7:0] alu_y;
