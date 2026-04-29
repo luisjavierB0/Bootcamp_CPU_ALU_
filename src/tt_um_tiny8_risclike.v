@@ -1,5 +1,3 @@
-`timescale 1ns/1ps
-
 module tt_um_tiny8_risclike (
     input  wire [7:0] ui_in,
     output wire [7:0] uo_out,
@@ -74,10 +72,6 @@ module tt_um_tiny8_risclike (
                     ui_in[2] ? dbg_status :
                                port_out;
 
-    // uio[0:2] = entradas SPI
-    // uio[3]   = program loaded
-    // uio[4]   = cpu halted
-    // uio[5]   = run echo
     assign uio_out[0] = 1'b0;
     assign uio_out[1] = 1'b0;
     assign uio_out[2] = 1'b0;
