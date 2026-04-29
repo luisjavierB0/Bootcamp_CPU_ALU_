@@ -65,10 +65,8 @@ module tt_um_tiny8_risclike (
             prog_loaded <= 1'b1;
     end
 
-    // Salida principal: solo el puerto de salida del CPU
     assign uo_out = port_out;
 
-    // Estados visibles por uio_out
     assign uio_out[0] = 1'b0;
     assign uio_out[1] = 1'b0;
     assign uio_out[2] = 1'b0;
@@ -87,11 +85,10 @@ module tt_um_tiny8_risclike (
     assign uio_oe[6] = 1'b0;
     assign uio_oe[7] = 1'b0;
 
-    // Evitar warnings de lint sin meter lógica extra grande
     /* verilator lint_off UNUSEDSIGNAL */
-    wire [6:0] unused_ui  = ui_in[7:1];
-    wire [4:0] unused_uio = uio_in[7:3];
+    wire [7:1] unused_ui  = ui_in[7:1];
     wire       unused_ena = ena;
+    wire [7:3] unused_uio = uio_in[7:3];
     /* verilator lint_on UNUSEDSIGNAL */
 
 endmodule
