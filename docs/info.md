@@ -1,96 +1,354 @@
-# Tiny8 CPU with SPI program load and internal execution
+# Tiny8 CPU with SPI Program Load and Internal Execution
 
-## Overview
+## 1. Overview
 
-This project implements a compact 8-bit CPU for Tiny Tapeout.  
-The processor loads a short program through SPI into an internal instruction memory, and then executes that program autonomously.
+This project implements a compact 8-bit CPU in Verilog for Tiny Tapeout.
 
-The final stable version uses:
+The processor does not depend on a fixed hardcoded program. Instead, a short instruction sequence is loaded through SPI into internal program memory, and then the CPU executes that program autonomously.
 
-- an 8-bit accumulator (`ACC`)
-- one auxiliary 8-bit register (`R1`)
-- a 10-word internal program memory
-- a compact instruction set with arithmetic, logic, branch, output, and simple register transfer operations
-
-The design was optimized to remain compatible with a 1x1 Tiny Tapeout tile while still supporting programmable behavior.
+The design is intentionally compact so it can fit within a Tiny Tapeout 1x1 tile while still supporting programmable behavior.
 
 ---
 
-## Architecture
+## 2. Main idea
 
-The design is split into the following RTL blocks:
+The system operates in two phases:
 
-- `alu8.v`  
-  8-bit ALU used for arithmetic and logic operations.
-
-- `tiny8_cpu.v`  
-  CPU core implementing program sequencing, decoding, branching, and output behavior.
-
-- `tiny8_prgmem.v`  
-  Internal instruction memory with 10 instruction slots.
-
-- `tiny8_spi_loader.v`  
-  SPI-based loader that receives instruction frames and writes them into program memory.
-
-- `tt_um_tiny8_risclike.v`  
-  Tiny Tapeout top wrapper integrating loader, memory, CPU, and IO mapping.
-
----
-
-## Operating principle
-
-### Program load phase
-When `RUN=0`, the SPI loader is allowed to write instructions into internal memory.
-
-Each SPI frame is 24 bits:
-
-- upper byte: address byte
-- lower 16 bits: instruction word
-
-Only addresses `0..9` are valid in the final stable implementation.
+### Program loading phase
+When `RUN = 0`, the external controller sends instruction frames through SPI.  
+Those instructions are stored in internal memory.
 
 ### Execution phase
-When `RUN=1`, the CPU starts executing from address `0`.
+When `RUN = 1`, the CPU starts executing from address `0` and runs autonomously.
 
-The program counter wraps around inside the valid program space, and branch targets outside the valid range are redirected safely.
+This gives the design programmability without needing a large internal ROM.
 
 ---
 
-## Instruction set
+## 3. RTL architecture
 
-The final stable ISA includes:
+The project is organized into the following RTL blocks:
 
-- `NOP`
-- `LDI_ACC`
-- `LDI_R1`
-- `ADD`
-- `SUB`
-- `AND`
-- `OR`
-- `XOR`
-- `CMP`
-- `OUT`
-- `JMP`
-- `BZ`
-- `BNZ`
+### `alu8.v`
+8-bit ALU used for arithmetic and logic operations.
+
+### `tiny8_cpu.v`
+CPU core responsible for:
+- instruction fetch from internal program memory
+- instruction decode
+- arithmetic and logic sequencing
+- branching
+- output generation
+- HALT state
+
+### `tiny8_prgmem.v`
+Internal instruction memory.
+
+The final implementation uses **10 valid instruction slots**, with valid addresses:
+
+- `0` to `9`
+
+Addresses outside this range are treated as invalid.
+
+### `tiny8_spi_loader.v`
+SPI loader that receives 24-bit frames and writes instructions into internal program memory.
+
+### `tt_um_tiny8_risclike.v`
+Tiny Tapeout top-level wrapper that connects:
+- SPI loader
+- instruction memory
+- CPU
+- Tiny Tapeout IO pins
+
+---
+
+## 4. Program memory model
+
+The internal program memory stores **10 instruction words**.
+
+Each instruction word is **16 bits** wide.
+
+### Valid addresses
+- `0`
+- `1`
+- `2`
+- `3`
+- `4`
+- `5`
+- `6`
+- `7`
+- `8`
+- `9`
+
+### Invalid addresses
+If the CPU reads outside the valid range, the memory returns:
+
+- `16'hD000`
+
+which corresponds to:
+
 - `HALT`
-- `MOV_ACC_R1`
-- `OUT_R1`
 
-### Added enriched ISA instructions
-The final enriched version adds:
-
-- `MOV_ACC_R1`  
-  Copies `R1` into `ACC`
-
-- `OUT_R1`  
-  Sends `R1` directly to the external output port
-
-These instructions increase expressiveness without significantly increasing hardware complexity.
+This prevents undefined execution when an invalid address is reached.
 
 ---
 
-## IO behavior
+## 5. CPU execution model
+
+The CPU uses:
+
+- one accumulator register: `ACC`
+- one auxiliary register: `R1`
+- one output port: `port_out`
+- one zero flag: `Z`
+
+The program counter starts from address `0`.
+
+### Sequential execution
+The program counter advances normally through valid memory.
+
+### Wrap behavior
+Sequential execution wraps from address `9` back to address `0`.
+
+### Branch behavior
+Branch instructions (`JMP`, `BZ`, `BNZ`) use the low address bits of the instruction.
+
+If the branch target is outside the valid range, the CPU redirects execution to address `0`.
+
+### Halt behavior
+When `HALT` is executed:
+- `halted` becomes `1`
+- the CPU remains in halt state until reset or `RUN` is deasserted
+
+---
+
+## 6. Instruction set
+
+The CPU uses a compact 4-bit opcode in `instr[15:12]`.
+
+---
+
+### 6.1 Data and register operations
+
+#### `LDI_ACC`
+- Opcode: `0x1`
+- Operation: `ACC <- imm8`
+
+Format:
+- `1xxx`
+
+Example:
+- `0x102A` → load `0x2A` into `ACC`
+
+---
+
+#### `LDI_R1`
+- Opcode: `0x2`
+- Operation: `R1 <- imm8`
+
+Format:
+- `2xxx`
+
+Example:
+- `0x2033` → load `0x33` into `R1`
+
+---
+
+#### `MOV_ACC_R1`
+- Opcode: `0xE`
+- Operation: `ACC <- R1`
+
+Format:
+- `0xE000`
+
+---
+
+### 6.2 Arithmetic and logic operations
+
+All arithmetic/logic operations use:
+- operand A = `ACC`
+- operand B = `R1`
+
+#### `ADD`
+- Opcode: `0x3`
+- Operation: `ACC <- ACC + R1`
+
+Format:
+- `0x3000`
+
+---
+
+#### `SUB`
+- Opcode: `0x4`
+- Operation: `ACC <- ACC - R1`
+
+Format:
+- `0x4000`
+
+---
+
+#### `AND`
+- Opcode: `0x5`
+- Operation: `ACC <- ACC & R1`
+
+Format:
+- `0x5000`
+
+---
+
+#### `OR`
+- Opcode: `0x6`
+- Operation: `ACC <- ACC | R1`
+
+Format:
+- `0x6000`
+
+---
+
+#### `XOR`
+- Opcode: `0x7`
+- Operation: `ACC <- ACC ^ R1`
+
+Format:
+- `0x7000`
+
+---
+
+#### `CMP`
+- Opcode: `0x8`
+- Operation: compute comparison result through ALU subtraction path and update `Z`
+
+Format:
+- `0x8000`
+
+This instruction updates comparison state through the zero-result condition.
+
+---
+
+### 6.3 Output and control operations
+
+#### `OUT`
+- Opcode: `0x9`
+- Operation: `port_out <- ACC`
+
+Format:
+- `0x9000`
+
+---
+
+#### `OUT_R1`
+- Opcode: `0xF`
+- Operation: `port_out <- R1`
+
+Format:
+- `0xF000`
+
+---
+
+#### `JMP`
+- Opcode: `0xA`
+- Operation: unconditional jump
+
+Format:
+- `0xA00a`
+
+where the low address bits define the jump target.
+
+Example:
+- `0xA003` → jump to address `3`
+
+---
+
+#### `BZ`
+- Opcode: `0xB`
+- Operation: branch if zero flag is set
+
+Format:
+- `0xB00a`
+
+---
+
+#### `BNZ`
+- Opcode: `0xC`
+- Operation: branch if zero flag is not set
+
+Format:
+- `0xC00a`
+
+---
+
+#### `HALT`
+- Opcode: `0xD`
+- Operation: stop execution
+
+Format:
+- `0xD000`
+
+---
+
+#### `NOP`
+- Opcode: `0x0`
+- Operation: no operation
+
+Format:
+- `0x0000`
+
+---
+
+## 7. SPI loading protocol
+
+The program loader receives **24-bit SPI frames**.
+
+### Frame format
+- bits `[23:16]` = address byte
+- bits `[15:0]`  = instruction word
+
+### Effective address usage
+Only the needed low address bits are used internally.  
+For the final memory implementation, only addresses corresponding to valid program slots are meaningful.
+
+### Important condition
+Instruction loading is enabled only when:
+
+- `RUN = 0`
+
+If `RUN = 1`, execution mode is active and memory writes are blocked.
+
+---
+
+## 8. Operating sequence
+
+## 8.1 Reset
+Apply reset to initialize:
+- CPU state
+- program memory contents
+- output port
+- status flags
+
+## 8.2 Program load
+Set:
+
+- `RUN = 0`
+
+Then send the desired instruction frames over SPI.
+
+## 8.3 Program start
+Set:
+
+- `RUN = 1`
+
+The CPU starts execution from address `0`.
+
+## 8.4 Program monitoring
+Observe:
+- `uo[7:0]` for output values
+- `uio[3]` for `PROGRAM_LOADED`
+- `uio[4]` for `HALTED`
+- `uio[5]` for `RUN_ECHO`
+
+---
+
+## 9. Tiny Tapeout IO mapping
 
 ### Dedicated inputs
 - `ui[0]` = `RUN`
@@ -98,41 +356,60 @@ These instructions increase expressiveness without significantly increasing hard
 ### Dedicated outputs
 - `uo[7:0]` = CPU output port
 
-### Bidirectional bank usage
+### Bidirectional bank
 - `uio[0]` = `SPI_SCK` input
 - `uio[1]` = `SPI_CS_N` input
 - `uio[2]` = `SPI_MOSI` input
 - `uio[3]` = `PROGRAM_LOADED` output
 - `uio[4]` = `HALTED` output
 - `uio[5]` = `RUN_ECHO` output
+- `uio[6]` = unused
+- `uio[7]` = unused
 
 ---
 
-## Example program
+## 10. Example program
 
-A simple test program can be loaded as:
+Example sequence:
 
-- `0: LDI_R1 0x33`
-- `1: MOV_ACC_R1`
-- `2: OUT`
-- `3: OUT_R1`
-- `4: HALT`
+| Address | Instruction | Meaning |
+|--------:|-------------|---------|
+| 0 | `0x2033` | `LDI_R1 0x33` |
+| 1 | `0xE000` | `MOV_ACC_R1` |
+| 2 | `0x9000` | `OUT` |
+| 3 | `0xF000` | `OUT_R1` |
+| 4 | `0xD000` | `HALT` |
 
-This demonstrates:
-
-- SPI loading
-- register transfer
-- output behavior
-- HALT state signaling
+### Expected behavior
+- `R1` receives `0x33`
+- `ACC` receives `R1`
+- output port shows `0x33`
+- output port is written again with `R1`
+- CPU halts
 
 ---
 
-## Final stable configuration
+## 11. Test structure
 
-The version documented here corresponds to the stable implementation that successfully balanced:
+The repository test structure is intended to validate:
 
-- programmability
-- compact area usage
-- enriched ISA
-- internal instruction storage
-- Tiny Tapeout 1x1 compatibility
+- SPI instruction loading
+- instruction execution
+- output correctness
+- HALT signaling
+- gate-level compatibility
+
+The cocotb testbench loads a short program through SPI and verifies the visible output behavior.
+
+---
+
+## 12. Project intent
+
+This project is an architectural extension of a simple ALU challenge.
+
+Instead of manually applying operands for every operation, the ALU is controlled by a compact programmable CPU that:
+- loads instructions
+- stores them internally
+- executes them autonomously
+
+This makes the project more representative of a small programmable digital system while remaining compact enough for Tiny Tapeout.
