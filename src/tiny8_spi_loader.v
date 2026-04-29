@@ -56,7 +56,6 @@ module tiny8_spi_loader (
                 shift_reg <= next_shift;
 
                 if (bit_count == 5'd23) begin
-                    // Frame: [23:16] addr byte, [15:0] instruction
                     wr_addr      <= next_shift[19:16];
                     wr_data      <= next_shift[15:0];
                     wr_en        <= 1'b1;
