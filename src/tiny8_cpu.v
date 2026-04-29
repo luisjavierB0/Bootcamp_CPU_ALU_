@@ -14,20 +14,22 @@ module tiny8_cpu (
     localparam ST_EXEC  = 2'd1;
     localparam ST_HALT  = 2'd2;
 
-    localparam OP_NOP     = 4'h0;
-    localparam OP_LDI_ACC = 4'h1;
-    localparam OP_LDI_R1  = 4'h2;
-    localparam OP_ADD     = 4'h3;
-    localparam OP_SUB     = 4'h4;
-    localparam OP_AND     = 4'h5;
-    localparam OP_OR      = 4'h6;
-    localparam OP_XOR     = 4'h7;
-    localparam OP_CMP     = 4'h8;
-    localparam OP_OUT     = 4'h9;
-    localparam OP_JMP     = 4'hA;
-    localparam OP_BZ      = 4'hB;
-    localparam OP_BNZ     = 4'hC;
-    localparam OP_HALT    = 4'hD;
+    localparam OP_NOP        = 4'h0;
+    localparam OP_LDI_ACC    = 4'h1;
+    localparam OP_LDI_R1     = 4'h2;
+    localparam OP_ADD        = 4'h3;
+    localparam OP_SUB        = 4'h4;
+    localparam OP_AND        = 4'h5;
+    localparam OP_OR         = 4'h6;
+    localparam OP_XOR        = 4'h7;
+    localparam OP_CMP        = 4'h8;
+    localparam OP_OUT        = 4'h9;
+    localparam OP_JMP        = 4'hA;
+    localparam OP_BZ         = 4'hB;
+    localparam OP_BNZ        = 4'hC;
+    localparam OP_HALT       = 4'hD;
+    localparam OP_MOV_ACC_R1 = 4'hE;
+    localparam OP_OUT_R1     = 4'hF;
 
     reg [1:0] state;
     reg [3:0] pc;
@@ -45,6 +47,9 @@ module tiny8_cpu (
     wire [3:0] addr4  = ir[3:0];
 
     assign instr_addr = pc;
+
+    wire [3:0] pc_next_seq = (pc == 4'd9) ? 4'd0 : (pc + 4'd1);
+    wire       addr_valid  = (addr4 < 4'd10);
 
     reg  [2:0] alu_op;
     wire [7:0] alu_y;
@@ -97,56 +102,60 @@ module tiny8_cpu (
                 ST_EXEC: begin
                     case (opcode)
                         OP_NOP: begin
-                            pc    <= pc + 4'd1;
+                            pc    <= pc_next_seq;
                             state <= ST_FETCH;
                         end
 
                         OP_LDI_ACC: begin
                             acc   <= imm8;
                             z     <= (imm8 == 8'h00);
-                            pc    <= pc + 4'd1;
+                            pc    <= pc_next_seq;
                             state <= ST_FETCH;
                         end
 
                         OP_LDI_R1: begin
                             r1    <= imm8;
-                            pc    <= pc + 4'd1;
+                            pc    <= pc_next_seq;
                             state <= ST_FETCH;
                         end
 
                         OP_ADD, OP_SUB, OP_AND, OP_OR, OP_XOR: begin
                             acc   <= alu_y;
                             z     <= (alu_y == 8'h00);
-                            pc    <= pc + 4'd1;
+                            pc    <= pc_next_seq;
                             state <= ST_FETCH;
                         end
 
                         OP_CMP: begin
                             z     <= (alu_y == 8'h00);
-                            pc    <= pc + 4'd1;
+                            pc    <= pc_next_seq;
                             state <= ST_FETCH;
                         end
 
                         OP_OUT: begin
                             port_out <= acc;
-                            pc       <= pc + 4'd1;
+                            pc       <= pc_next_seq;
                             state    <= ST_FETCH;
                         end
 
                         OP_JMP: begin
-                            pc    <= addr4;
+                            pc    <= addr_valid ? addr4 : 4'd0;
                             state <= ST_FETCH;
                         end
 
                         OP_BZ: begin
-                            if (z) pc <= addr4;
-                            else   pc <= pc + 4'd1;
+                            if (z)
+                                pc <= addr_valid ? addr4 : 4'd0;
+                            else
+                                pc <= pc_next_seq;
                             state <= ST_FETCH;
                         end
 
                         OP_BNZ: begin
-                            if (!z) pc <= addr4;
-                            else    pc <= pc + 4'd1;
+                            if (!z)
+                                pc <= addr_valid ? addr4 : 4'd0;
+                            else
+                                pc <= pc_next_seq;
                             state <= ST_FETCH;
                         end
 
@@ -155,8 +164,21 @@ module tiny8_cpu (
                             state  <= ST_HALT;
                         end
 
+                        OP_MOV_ACC_R1: begin
+                            acc   <= r1;
+                            z     <= (r1 == 8'h00);
+                            pc    <= pc_next_seq;
+                            state <= ST_FETCH;
+                        end
+
+                        OP_OUT_R1: begin
+                            port_out <= r1;
+                            pc       <= pc_next_seq;
+                            state    <= ST_FETCH;
+                        end
+
                         default: begin
-                            pc    <= pc + 4'd1;
+                            pc    <= pc_next_seq;
                             state <= ST_FETCH;
                         end
                     endcase
