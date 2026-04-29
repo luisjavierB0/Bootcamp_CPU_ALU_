@@ -3,7 +3,7 @@ module tiny8_cpu (
     input  wire        rst_n,
     input  wire        run,
 
-    output wire [2:0]  instr_addr,
+    output wire [3:0]  instr_addr,
     input  wire [15:0] instr_in,
 
     output reg  [7:0]  port_out,
@@ -30,7 +30,7 @@ module tiny8_cpu (
     localparam OP_HALT    = 4'hD;
 
     reg [1:0] state;
-    reg [2:0] pc;
+    reg [3:0] pc;
 
     /* verilator lint_off UNUSEDSIGNAL */
     reg [15:0] ir;
@@ -42,7 +42,7 @@ module tiny8_cpu (
 
     wire [3:0] opcode = ir[15:12];
     wire [7:0] imm8   = ir[7:0];
-    wire [2:0] addr3  = ir[2:0];
+    wire [3:0] addr4  = ir[3:0];
 
     assign instr_addr = pc;
 
@@ -76,7 +76,7 @@ module tiny8_cpu (
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state    <= ST_FETCH;
-            pc       <= 3'd0;
+            pc       <= 4'd0;
             ir       <= 16'h0000;
             acc      <= 8'h00;
             r1       <= 8'h00;
@@ -85,7 +85,7 @@ module tiny8_cpu (
             halted   <= 1'b0;
         end else if (!run) begin
             state  <= ST_FETCH;
-            pc     <= 3'd0;
+            pc     <= 4'd0;
             halted <= 1'b0;
         end else begin
             case (state)
@@ -97,56 +97,56 @@ module tiny8_cpu (
                 ST_EXEC: begin
                     case (opcode)
                         OP_NOP: begin
-                            pc    <= pc + 3'd1;
+                            pc    <= pc + 4'd1;
                             state <= ST_FETCH;
                         end
 
                         OP_LDI_ACC: begin
                             acc   <= imm8;
                             z     <= (imm8 == 8'h00);
-                            pc    <= pc + 3'd1;
+                            pc    <= pc + 4'd1;
                             state <= ST_FETCH;
                         end
 
                         OP_LDI_R1: begin
                             r1    <= imm8;
-                            pc    <= pc + 3'd1;
+                            pc    <= pc + 4'd1;
                             state <= ST_FETCH;
                         end
 
                         OP_ADD, OP_SUB, OP_AND, OP_OR, OP_XOR: begin
                             acc   <= alu_y;
                             z     <= (alu_y == 8'h00);
-                            pc    <= pc + 3'd1;
+                            pc    <= pc + 4'd1;
                             state <= ST_FETCH;
                         end
 
                         OP_CMP: begin
                             z     <= (alu_y == 8'h00);
-                            pc    <= pc + 3'd1;
+                            pc    <= pc + 4'd1;
                             state <= ST_FETCH;
                         end
 
                         OP_OUT: begin
                             port_out <= acc;
-                            pc       <= pc + 3'd1;
+                            pc       <= pc + 4'd1;
                             state    <= ST_FETCH;
                         end
 
                         OP_JMP: begin
-                            pc    <= addr3;
+                            pc    <= addr4;
                             state <= ST_FETCH;
                         end
 
                         OP_BZ: begin
-                            if (z) pc <= addr3;
-                            else   pc <= pc + 3'd1;
+                            if (z) pc <= addr4;
+                            else   pc <= pc + 4'd1;
                             state <= ST_FETCH;
                         end
 
                         OP_BNZ: begin
-                            if (!z) pc <= addr3;
-                            else    pc <= pc + 3'd1;
+                            if (!z) pc <= addr4;
+                            else    pc <= pc + 4'd1;
                             state <= ST_FETCH;
                         end
 
@@ -156,7 +156,7 @@ module tiny8_cpu (
                         end
 
                         default: begin
-                            pc    <= pc + 3'd1;
+                            pc    <= pc + 4'd1;
                             state <= ST_FETCH;
                         end
                     endcase
