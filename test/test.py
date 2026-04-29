@@ -51,19 +51,23 @@ async def test_load_and_run_program(dut):
     dut.ena.value = 1
     dut.ui_in.value = 0
     dut.rst_n.value = 0
-    dut.uio_in.value = make_uio_byte(0, 1, 0)   # idle SPI
+    dut.uio_in.value = make_uio_byte(0, 1, 0)  # idle SPI
 
     await ClockCycles(dut.clk, 5)
     dut.rst_n.value = 1
     await ClockCycles(dut.clk, 5)
 
     # Programa:
-    # 0: LDI_ACC 0x2A
-    # 1: OUT
-    # 2: HALT
-    await spi_send_word24(dut, 0, 0x102A)
-    await spi_send_word24(dut, 1, 0x9000)
-    await spi_send_word24(dut, 2, 0xD000)
+    # 0: LDI_R1 0x33
+    # 1: MOV_ACC_R1
+    # 2: OUT
+    # 3: OUT_R1
+    # 4: HALT
+    await spi_send_word24(dut, 0, 0x2033)
+    await spi_send_word24(dut, 1, 0xE000)
+    await spi_send_word24(dut, 2, 0x9000)
+    await spi_send_word24(dut, 3, 0xF000)
+    await spi_send_word24(dut, 4, 0xD000)
 
     await ClockCycles(dut.clk, 10)
 
@@ -76,10 +80,11 @@ async def test_load_and_run_program(dut):
 
     # Ejecutar
     dut.ui_in.value = 0x01
-    await ClockCycles(dut.clk, 20)
+    await ClockCycles(dut.clk, 30)
 
-    assert int(dut.uo_out.value) == 0x2A, (
-        f"Se esperaba 0x2A y salió 0x{int(dut.uo_out.value):02X}"
+    # Tanto OUT como OUT_R1 deben terminar dejando 0x33 en salida
+    assert int(dut.uo_out.value) == 0x33, (
+        f"Se esperaba 0x33 y salió 0x{int(dut.uo_out.value):02X}"
     )
 
     halted = (int(dut.uio_out.value) >> 4) & 1
