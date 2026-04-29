@@ -12,11 +12,11 @@ module tt_um_tiny8_risclike (
     wire run = ui_in[0];
 
     wire        wr_en_raw;
-    wire [4:0]  wr_addr;
+    wire [2:0]  wr_addr;
     wire [15:0] wr_data;
     wire        loaded_pulse;
 
-    wire [4:0]  instr_addr;
+    wire [2:0]  instr_addr;
     wire [15:0] instr_word;
 
     wire [7:0]  port_out;
